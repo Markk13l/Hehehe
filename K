@@ -1,0 +1,167 @@
+-- Adding a ScreenGui with a TextButton
+local Players = game:GetService("Players")
+local Player = Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
+
+local ScreenGui = Instance.new("ScreenGui", PlayerGui)
+local ToggleButton = Instance.new("TextButton", ScreenGui)
+
+ToggleButton.Size = UDim2.new(0, 100, 0, 50)
+ToggleButton.Position = UDim2.new(0, 10, 0, 10)
+ToggleButton.Text = "Toggle Aimlock"
+
+-- Global settings
+getgenv().games = {
+    Camlock = {
+        Enable = true,
+        prediction = 0.163,
+        smoothness = 0.9,
+        autopred = true,
+        AntiGroundShots = true,
+        Key = Enum.KeyCode.Q,
+    },
+}
+
+local RS = game:GetService("RunService")
+local WS = game:GetService("Workspace")
+local GS = game:GetService("GuiService")
+local Stats = game:GetService("Stats")
+local UserInputService = game:GetService("UserInputService")
+
+local LP = Players.LocalPlayer
+local Mouse = LP:GetMouse()
+local Camera = WS.CurrentCamera
+local GetGuiInset = GS.GetGuiInset
+local AimlockTarget = nil
+local MousePressed = false
+
+-- Function to toggle aimlock
+local function ToggleAimlock()
+    getgenv().games.Camlock.Enable = not getgenv().games.Camlock.Enable
+    ToggleButton.Text = getgenv().games.Camlock.Enable and "Disable Aimlock" or "Enable Aimlock"
+end
+
+-- Connect the toggle function to the button
+ToggleButton.MouseButton1Click:Connect(ToggleAimlock)
+
+local function GetNearestTargetFromClick()
+    local clickPosition = Mouse.Hit.p
+    local nearestPlayer = nil
+    local shortestDistance = math.huge
+
+    for _, v in pairs(Players:GetPlayers()) do
+        if v ~= LP and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
+            local distance = (v.Character.HumanoidRootPart.Position - clickPosition).Magnitude
+            if distance < shortestDistance then
+                nearestPlayer = v
+                shortestDistance = distance
+            end
+        end
+    end
+
+    return nearestPlayer
+end
+
+local function updatePrediction()
+    if getgenv().games.Camlock.autopred then
+        local ping = tonumber(Stats.Network.ServerStatsItem["Data Ping"]:GetValueString():match("(%d+%.?%d*)"))
+        if ping < 225 then
+            getgenv().Prediction = 1.4
+        elseif ping < 215 then
+            getgenv().Prediction = 1.2
+        elseif ping < 205 then
+            getgenv().Prediction = 1.0
+        elseif ping < 190 then
+            getgenv().Prediction = 0.11
+        elseif ping < 180 then
+            getgenv().Prediction = 0.13
+        elseif ping < 170 then
+            getgenv().Prediction = 0.15
+        elseif ping < 160 then
+            getgenv().Prediction = 0.18
+        elseif ping < 150 then
+            getgenv().Prediction = 0.110
+        elseif ping < 140 then
+            getgenv().Prediction = 0.113
+        elseif ping < 130 then
+            getgenv().Prediction = 0.116
+        elseif ping < 120 then
+            getgenv().Prediction = 0.120
+        elseif ping < 110 then
+            getgenv().Prediction = 0.124
+        elseif ping < 105 then
+            getgenv().Prediction = 0.127
+        elseif ping < 90 then
+            getgenv().Prediction = 0.130
+        elseif ping < 80 then
+            getgenv().Prediction = 0.133
+        elseif ping < 70 then
+            getgenv().Prediction = 0.136
+        elseif ping < 60 then
+            getgenv().Prediction = 0.15036
+        elseif ping < 50 then
+            getgenv().Prediction = 0.15036
+        elseif ping < 40 then
+            getgenv().Prediction = 0.145
+        elseif ping < 30 then
+            getgenv().Prediction = 0.154
+        elseif ping < 20 then
+            getgenv().Prediction = 0.156
+        end
+    end
+end
+
+RS.RenderStepped:Connect(function()
+    if getgenv().games.Camlock.Enable then
+        updatePrediction()
+    
+        if AimlockTarget and AimlockTarget.Character and AimlockTarget.Character:FindFirstChild("HumanoidRootPart") then
+            local Character = AimlockTarget.Character
+            local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+    
+            local KOd = Character:FindFirstChild("BodyEffects") and Character.BodyEffects:FindFirstChild("K.O") and Character.BodyEffects["K.O"].Value
+            local Grabbed = Character:FindFirstChild("GRABBING_CONSTRAINT") ~= nil
+    
+            if KOd or Grabbed then
+                AimlockTarget = nil
+                MousePressed = false
+            else
+                local aimPart = AimlockTarget.Character.HumanoidRootPart
+                if getgenv().games.Camlock.AntiGroundShots then
+                    if Humanoid.FloorMaterial == Enum.Material.Air then
+                        aimPart = AimlockTarget.Character.UpperTorso
+                    end
+                end
+    
+                local aimPosition = aimPart.Position + (aimPart.Velocity * getgenv().games.Camlock.prediction)
+                local smoothAim = CFrame.new(Camera.CFrame.Position, aimPosition)
+    
+                Camera.CFrame = Camera.CFrame:Lerp(smoothAim, getgenv().games.Camlock.smoothness)
+            end
+        end
+    end
+end)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if getgenv().games.Camlock.Enable then
+        if not gameProcessed and input.KeyCode == getgenv().games.Camlock.Key then
+            if AimlockTarget == nil then
+                pcall(function()
+                    if not MousePressed then MousePressed = true end 
+                    local Target = GetNearestTargetFromClick()
+                    if Target then 
+                        AimlockTarget = Target
+                    end
+                end)
+            elseif AimlockTarget then
+                AimlockTarget = nil
+                if MousePressed then MousePressed = false end
+            end
+        end
+    end
+end)
+
+LP.CharacterAdded:Connect(function()
+    AimlockTarget = nil
+    MousePressed = false
+end)
